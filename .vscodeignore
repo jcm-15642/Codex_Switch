@@ -1,7 +1,13 @@
 .vscode/**
+.github/**
+.git/**
 src/**
 test/**
 out/test/**
 tsconfig.json
 **/*.map
 .gitignore
+.gitattributes
+CONTRIBUTING.md
+SECURITY.md
+CHANGELOG.md

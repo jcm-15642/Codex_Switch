@@ -1,0 +1,10 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+## [0.1.4] - 2026-07-24
+
+- Added grouped configuration backups, retention settings, restore, cleanup, and legacy-backup cleanup commands.
+- Avoid creating backups when the target API configuration is unchanged.
+- Added Profile rename support and a Reload Window action after a real switch.
+- Added Remote-WSL-compatible packaging of runtime dependencies.

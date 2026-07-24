@@ -2,9 +2,18 @@
   "name": "codex-switch",
   "displayName": "Codex Switch",
   "description": "Manage and safely switch Codex API URL and API key profiles.",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "publisher": "codex-switch",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jcm-15642/Codex_Switch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jcm-15642/Codex_Switch/issues"
+  },
+  "homepage": "https://github.com/jcm-15642/Codex_Switch#readme",
+  "keywords": ["codex", "vscode", "wsl", "api", "profile"],
   "engines": { "vscode": "^1.95.0" },
   "categories": ["Other"],
   "activationEvents": [
@@ -20,6 +29,18 @@
           "type": "string",
           "default": "",
           "description": "WSL distribution to use from a local Windows VS Code window. Leave empty to use the default distribution."
+        },
+        "codexSwitch.backupRetentionCount": {
+          "type": "number",
+          "default": 10,
+          "minimum": 3,
+          "description": "Number of complete Codex configuration backup groups to retain. At least the newest three are always kept."
+        },
+        "codexSwitch.backupMaxAgeDays": {
+          "type": "number",
+          "default": 30,
+          "minimum": 0,
+          "description": "Delete backup groups older than this many days after a successful write. Set to 0 to disable age-based cleanup."
         }
       }
     },
@@ -46,6 +67,9 @@
       { "command": "codexSwitch.renameProfile", "title": "Codex Switch: Rename Profile", "icon": "$(edit)" },
       { "command": "codexSwitch.editProfile", "title": "Codex Switch: Edit Profile" },
       { "command": "codexSwitch.deleteProfile", "title": "Codex Switch: Delete Profile" },
+      { "command": "codexSwitch.manageBackups", "title": "Codex Switch: Manage Backups", "icon": "$(archive)" },
+      { "command": "codexSwitch.cleanBackups", "title": "Codex Switch: Clean Managed Backups" },
+      { "command": "codexSwitch.cleanLegacyBackups", "title": "Codex Switch: Remove Legacy Backup Files" },
       { "command": "codexSwitch.refreshProfiles", "title": "Codex Switch: Refresh Profiles", "icon": "$(refresh)" },
       { "command": "codexSwitch.importCurrentConfig", "title": "Codex Switch: Import Current Codex Configuration" },
       { "command": "codexSwitch.selectWslDistribution", "title": "Codex Switch: Select WSL Distribution" }
@@ -53,7 +77,8 @@
     "menus": {
       "view/title": [
         { "command": "codexSwitch.addProfile", "when": "view == codexSwitch.profiles", "group": "navigation@1" },
-        { "command": "codexSwitch.refreshProfiles", "when": "view == codexSwitch.profiles", "group": "navigation@2" }
+        { "command": "codexSwitch.refreshProfiles", "when": "view == codexSwitch.profiles", "group": "navigation@2" },
+        { "command": "codexSwitch.manageBackups", "when": "view == codexSwitch.profiles", "group": "navigation@3" }
       ],
       "view/item/context": [
         { "command": "codexSwitch.switchProfile", "when": "view == codexSwitch.profiles && viewItem == codexProfile", "group": "inline@1" },
@@ -72,7 +97,8 @@
     "compile": "tsc -p .",
     "watch": "tsc -watch -p .",
     "test": "npm run compile && node --test out/test/*.test.js",
-    "package": "npm run compile && vsce package --allow-missing-repository"
+    "package": "npm run compile && vsce package --allow-missing-repository",
+    "release:check": "npm test && npm run package"
   },
   "dependencies": {
     "@iarna/toml": "^2.2.5"

@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { CodexConfigService, validateBaseUrl } from './codexConfigService';
 import { ProfileStore } from './profileStore';
 import { ProfileTreeProvider } from './profileTree';
-import { ApiProfile, CodexPaths } from './types';
+import { ApiProfile, BackupPolicy, CodexPaths } from './types';
 import { WslPathResolver } from './wslPathResolver';
 
 const INITIAL_IMPORT_KEY = 'initialImportCompleted';
@@ -17,6 +17,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   status.command = 'codexSwitch.switchProfile';
   status.show();
+
+  const backupPolicy = (): BackupPolicy => {
+    const settings = vscode.workspace.getConfiguration('codexSwitch');
+    return {
+      maxBackups: settings.get<number>('backupRetentionCount', 10),
+      maxAgeDays: settings.get<number>('backupMaxAgeDays', 30),
+    };
+  };
+
+  const offerReload = async (message: string): Promise<void> => {
+    const action = await vscode.window.showInformationMessage(message, 'Reload Window');
+    if (action === 'Reload Window') {
+      await vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
+  };
 
   const refreshUi = (): void => {
     const active = store.activeId() ? store.get(store.activeId() as string) : undefined;
@@ -74,22 +89,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!profile) {
       return;
     }
+    if (store.activeId() === profile.id) {
+      vscode.window.showInformationMessage(`“${profile.name}”已是当前 Codex API 配置。`);
+      return;
+    }
     const apiKey = await store.getApiKey(profile.id);
     if (!apiKey) {
       vscode.window.showErrorMessage(`档案“${profile.name}”缺少安全保存的 API Key。请编辑后再切换。`);
       return;
     }
     try {
-      await configService.apply(await resolvePaths(), { baseUrl: profile.baseUrl, apiKey });
+      const result = await configService.apply(
+        await resolvePaths(),
+        { baseUrl: profile.baseUrl, apiKey },
+        { profileName: profile.name, policy: backupPolicy() },
+      );
       await store.setActive(profile.id);
       refreshUi();
-      const action = await vscode.window.showInformationMessage(
-        `已切换到“${profile.name}”。重载窗口后，相关 Codex 终端或会话将读取新配置。`,
-        'Reload Window',
-      );
-      if (action === 'Reload Window') {
-        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+      if (!result.changed) {
+        vscode.window.showInformationMessage(`“${profile.name}”的配置已写入 Codex，无需重载。`);
+        return;
       }
+      await offerReload(`已切换到“${profile.name}”。重载窗口后，相关 Codex 终端或会话将读取新配置。`);
     } catch (error) {
       vscode.window.showErrorMessage(`切换失败：${errorMessage(error)}`);
     }
@@ -172,6 +193,79 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   };
 
+  const manageBackups = async (): Promise<void> => {
+    try {
+      const paths = await resolvePaths();
+      const backups = await configService.listBackups(paths);
+      if (backups.length === 0) {
+        vscode.window.showInformationMessage('没有可管理的成组备份。旧格式备份可通过“Remove Legacy Backup Files”清理。');
+        return;
+      }
+      const selection = await vscode.window.showQuickPick(
+        backups.map((backup) => ({
+          label: new Date(backup.createdAt).toLocaleString(),
+          description: backup.profileName ?? (backup.reason === 'before-restore' ? '恢复前快照' : '未知档案'),
+          detail: backup.reason === 'profile-switch' ? '切换前备份' : '恢复前备份',
+          backup,
+        })),
+        { placeHolder: '选择要恢复或删除的成组备份' },
+      );
+      if (!selection) {
+        return;
+      }
+      const action = await vscode.window.showWarningMessage(
+        `备份：${selection.label}（${selection.description}）`,
+        { modal: true },
+        '恢复此备份',
+        '删除此备份',
+      );
+      if (action === '恢复此备份') {
+        const result = await configService.restoreBackup(paths, selection.backup, backupPolicy());
+        if (result.changed) {
+          await offerReload('已恢复备份。重载窗口后，相关 Codex 终端或会话将读取恢复后的配置。');
+        } else {
+          vscode.window.showInformationMessage('当前 Codex 配置已与所选备份一致，无需恢复。');
+        }
+      } else if (action === '删除此备份') {
+        await configService.deleteBackup(paths, selection.backup);
+        vscode.window.showInformationMessage('已删除所选备份组。');
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`备份管理失败：${errorMessage(error)}`);
+    }
+  };
+
+  const cleanBackups = async (): Promise<void> => {
+    try {
+      const removed = await configService.pruneBackups(await resolvePaths(), backupPolicy());
+      vscode.window.showInformationMessage(removed.length ? `已按保留策略清理 ${removed.length} 组备份。` : '没有需要清理的成组备份。');
+    } catch (error) {
+      vscode.window.showErrorMessage(`清理备份失败：${errorMessage(error)}`);
+    }
+  };
+
+  const cleanLegacyBackups = async (): Promise<void> => {
+    try {
+      const paths = await resolvePaths();
+      const files = await configService.listLegacyBackupFiles(paths);
+      if (files.length === 0) {
+        vscode.window.showInformationMessage('没有旧格式的备份文件。');
+        return;
+      }
+      const confirmation = await vscode.window.showWarningMessage(
+        `删除 .codex 目录中 ${files.length} 个旧格式备份文件？此操作不可恢复。`,
+        { modal: true },
+        '删除旧备份',
+      );
+      if (confirmation === '删除旧备份') {
+        const count = await configService.removeLegacyBackupFiles(paths);
+        vscode.window.showInformationMessage(`已删除 ${count} 个旧格式备份文件。`);
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`清理旧备份失败：${errorMessage(error)}`);
+    }
+  };
+
   context.subscriptions.push(
     treeView,
     status,
@@ -180,6 +274,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('codexSwitch.renameProfile', renameProfile),
     vscode.commands.registerCommand('codexSwitch.editProfile', editProfile),
     vscode.commands.registerCommand('codexSwitch.deleteProfile', deleteProfile),
+    vscode.commands.registerCommand('codexSwitch.manageBackups', manageBackups),
+    vscode.commands.registerCommand('codexSwitch.cleanBackups', cleanBackups),
+    vscode.commands.registerCommand('codexSwitch.cleanLegacyBackups', cleanLegacyBackups),
     vscode.commands.registerCommand('codexSwitch.refreshProfiles', refreshUi),
     vscode.commands.registerCommand('codexSwitch.importCurrentConfig', () => importCurrent(false)),
     vscode.commands.registerCommand('codexSwitch.selectWslDistribution', async () => {
