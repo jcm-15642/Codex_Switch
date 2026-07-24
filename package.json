@@ -2,7 +2,7 @@
   "name": "codex-switch",
   "displayName": "Codex Switch",
   "description": "Manage and safely switch Codex API URL and API key profiles.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "codex-switch",
   "license": "MIT",
   "repository": {
@@ -63,11 +63,11 @@
     },
     "commands": [
       { "command": "codexSwitch.switchProfile", "title": "Codex Switch: Switch Profile" },
-      { "command": "codexSwitch.addProfile", "title": "Codex Switch: Add Profile" },
+      { "command": "codexSwitch.addProfile", "title": "Codex Switch: Add Profile", "icon": "$(add)" },
       { "command": "codexSwitch.captureOfficialProfile", "title": "Codex Switch: Import Current Official Account" },
       { "command": "codexSwitch.renameProfile", "title": "Codex Switch: Rename Profile", "icon": "$(edit)" },
       { "command": "codexSwitch.editProfile", "title": "Codex Switch: Edit Profile" },
-      { "command": "codexSwitch.deleteProfile", "title": "Codex Switch: Delete Profile" },
+      { "command": "codexSwitch.deleteProfile", "title": "Codex Switch: Delete Profile", "icon": "$(trash)" },
       { "command": "codexSwitch.manageBackups", "title": "Codex Switch: Manage Backups", "icon": "$(archive)" },
       { "command": "codexSwitch.cleanBackups", "title": "Codex Switch: Clean Managed Backups" },
       { "command": "codexSwitch.cleanLegacyBackups", "title": "Codex Switch: Remove Legacy Backup Files" },
@@ -87,11 +87,6 @@
         { "command": "codexSwitch.renameProfile", "when": "view == codexSwitch.profiles && viewItem == codexProfile", "group": "inline@2" },
         { "command": "codexSwitch.editProfile", "when": "view == codexSwitch.profiles && viewItem == codexProfile", "group": "inline@3" },
         { "command": "codexSwitch.deleteProfile", "when": "view == codexSwitch.profiles && viewItem == codexProfile", "group": "inline@4" }
-      ],
-      "commandPalette": [
-        { "command": "codexSwitch.renameProfile", "when": "false" },
-        { "command": "codexSwitch.editProfile", "when": "false" },
-        { "command": "codexSwitch.deleteProfile", "when": "false" }
       ]
     }
   },

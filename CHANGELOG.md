@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.1] - 2026-07-24
+
+- Preserve the exact text and formatting of every private-profile `auth.json` field except `OPENAI_API_KEY`.
+- Show add and delete actions with codicon buttons and expose saved-profile editing in the command palette.
+
 ## [0.2.0] - 2026-07-24
 
 - Added separate private API and official-account Profile types.

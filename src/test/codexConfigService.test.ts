@@ -47,6 +47,7 @@ test('reads and applies only Codex API fields, preserving TOML content', async (
   const config = await fs.readFile(paths.configPath, 'utf8');
   assert.equal(auth.OPENAI_API_KEY, 'new-key');
   assert.equal(auth.extra, true);
+  assert.equal(await fs.readFile(paths.authPath, 'utf8'), '{\n  "OPENAI_API_KEY": "new-key",\n  "extra": true\n}\n');
   assert.match(config, /base_url = "https:\/\/new\.example\/v1" # keep this/);
   assert.match(config, /\[features\]\nplugins = false/);
   const backups = await service.listBackups(paths);

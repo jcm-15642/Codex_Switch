@@ -8,6 +8,7 @@ import { ApplyResult, BackupInfo, BackupPolicy, CapturedProfileAuth, CodexConfig
 const PROVIDER_SECTION = /^\s*\[\s*model_providers\.OpenAI\s*\]\s*(?:#.*)?\r?$/;
 const SECTION = /^\s*\[/;
 const BASE_URL = /^(\s*base_url\s*=\s*)("(?:\\.|[^"\\])*"|'[^']*')(\s*(?:#.*)?)(\r?)$/;
+const AUTH_KEY_VALUE = /("OPENAI_API_KEY"\s*:\s*)("(?:\\.|[^"\\])*")/;
 const BACKUP_DIRECTORY = 'codex-switch-backups';
 const MIN_BACKUPS_TO_KEEP = 3;
 
@@ -236,9 +237,39 @@ export class CodexConfigService {
 
   private patchAuth(authText: string, apiKey: string): string {
     const auth = this.parseAuthDocument(authText);
-    auth.OPENAI_API_KEY = apiKey;
+    if (typeof auth.OPENAI_API_KEY === 'string') {
+      const patched = authText.replace(
+        AUTH_KEY_VALUE,
+        (_whole, prefix: string) => `${prefix}${JSON.stringify(apiKey)}`,
+      );
+      if (patched !== authText) {
+        return patched;
+      }
+      throw new Error('auth.json contains OPENAI_API_KEY in an unsupported JSON format.');
+    }
+    if (auth.OPENAI_API_KEY !== undefined) {
+      throw new Error('auth.json contains a non-string OPENAI_API_KEY.');
+    }
+    return this.insertApiKey(authText, apiKey, Object.keys(auth).length > 0);
+  }
+
+  /** Adds a Key to an official-account document without reformatting its existing fields. */
+  private insertApiKey(authText: string, apiKey: string, hasExistingFields: boolean): string {
+    const closingBrace = authText.lastIndexOf('}');
+    if (closingBrace < 0) {
+      throw new Error('auth.json is not a JSON object.');
+    }
     const indentation = /\n([\t ]+)"/.exec(authText)?.[1] ?? '  ';
-    return `${JSON.stringify(auth, null, indentation)}\n`;
+    const before = authText.slice(0, closingBrace);
+    const after = authText.slice(closingBrace);
+    if (!hasExistingFields) {
+      return `${before}\n${indentation}"OPENAI_API_KEY": ${JSON.stringify(apiKey)}\n${after}`;
+    }
+    const trimmedBefore = before.replace(/[\t \r\n]+$/, '');
+    const suffix = before.slice(trimmedBefore.length);
+    const separator = trimmedBefore.endsWith(',') ? '' : ',';
+    const lineBreak = suffix.includes('\n') ? '\n' : ' ';
+    return `${trimmedBefore}${separator}${lineBreak}${indentation}"OPENAI_API_KEY": ${JSON.stringify(apiKey)}${suffix || lineBreak}${after}`;
   }
 
   private patchToml(tomlText: string, baseUrl: string): string {
