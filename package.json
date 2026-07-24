@@ -1,0 +1,86 @@
+{
+  "name": "codex-switch",
+  "displayName": "Codex Switch",
+  "description": "Manage and safely switch Codex API URL and API key profiles.",
+  "version": "0.1.2",
+  "publisher": "codex-switch",
+  "license": "MIT",
+  "engines": { "vscode": "^1.95.0" },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onView:codexSwitch.profiles",
+    "onCommand:codexSwitch.switchProfile"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Codex Switch",
+      "properties": {
+        "codexSwitch.wslDistribution": {
+          "type": "string",
+          "default": "",
+          "description": "WSL distribution to use from a local Windows VS Code window. Leave empty to use the default distribution."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codexSwitch",
+          "title": "Codex Switch",
+          "icon": "media/codex-switch.svg"
+        }
+      ]
+    },
+    "views": {
+      "codexSwitch": [
+        {
+          "id": "codexSwitch.profiles",
+          "name": "API Profiles"
+        }
+      ]
+    },
+    "commands": [
+      { "command": "codexSwitch.switchProfile", "title": "Codex Switch: Switch Profile" },
+      { "command": "codexSwitch.addProfile", "title": "Codex Switch: Add Profile" },
+      { "command": "codexSwitch.renameProfile", "title": "Codex Switch: Rename Profile", "icon": "$(edit)" },
+      { "command": "codexSwitch.editProfile", "title": "Codex Switch: Edit Profile" },
+      { "command": "codexSwitch.deleteProfile", "title": "Codex Switch: Delete Profile" },
+      { "command": "codexSwitch.refreshProfiles", "title": "Codex Switch: Refresh Profiles", "icon": "$(refresh)" },
+      { "command": "codexSwitch.importCurrentConfig", "title": "Codex Switch: Import Current Codex Configuration" },
+      { "command": "codexSwitch.selectWslDistribution", "title": "Codex Switch: Select WSL Distribution" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "codexSwitch.addProfile", "when": "view == codexSwitch.profiles", "group": "navigation@1" },
+        { "command": "codexSwitch.refreshProfiles", "when": "view == codexSwitch.profiles", "group": "navigation@2" }
+      ],
+      "view/item/context": [
+        { "command": "codexSwitch.switchProfile", "when": "view == codexSwitch.profiles && viewItem == codexProfile", "group": "inline@1" },
+        { "command": "codexSwitch.renameProfile", "when": "view == codexSwitch.profiles && viewItem == codexProfile", "group": "inline@2" },
+        { "command": "codexSwitch.editProfile", "when": "view == codexSwitch.profiles && viewItem == codexProfile", "group": "inline@3" },
+        { "command": "codexSwitch.deleteProfile", "when": "view == codexSwitch.profiles && viewItem == codexProfile", "group": "inline@4" }
+      ],
+      "commandPalette": [
+        { "command": "codexSwitch.renameProfile", "when": "false" },
+        { "command": "codexSwitch.editProfile", "when": "false" },
+        { "command": "codexSwitch.deleteProfile", "when": "false" }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "test": "npm run compile && node --test out/test/*.test.js",
+    "package": "npm run compile && vsce package --allow-missing-repository"
+  },
+  "dependencies": {
+    "@iarna/toml": "^2.2.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/vscode": "^1.95.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.7.2"
+  }
+}
