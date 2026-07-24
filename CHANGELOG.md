@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.2] - 2026-07-24
+
+- Use icons for add, rename, edit, and delete Profile actions.
+
 ## [0.2.1] - 2026-07-24
 
 - Preserve the exact text and formatting of every private-profile `auth.json` field except `OPENAI_API_KEY`.

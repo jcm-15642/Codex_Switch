@@ -71,8 +71,8 @@ npm run package
 
 ```powershell
 git push origin main
-git tag -a v0.2.1 -m "v0.2.1"
-git push origin v0.2.1
+git tag -a v0.2.2 -m "v0.2.2"
+git push origin v0.2.2
 ```
 
 GitHub Actions 会运行测试、打包 VSIX，并自动创建同名 GitHub Release。
