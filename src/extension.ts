@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { CodexConfigService, validateBaseUrl } from './codexConfigService';
 import { ProfileStore } from './profileStore';
 import { ProfileTreeProvider } from './profileTree';
-import { ApiProfile, BackupPolicy, CodexPaths } from './types';
+import { ApiProfile, BackupPolicy, CapturedProfileAuth, CodexPaths, ProfileKind } from './types';
 import { WslPathResolver } from './wslPathResolver';
 
 const INITIAL_IMPORT_KEY = 'initialImportCompleted';
@@ -17,6 +17,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   status.command = 'codexSwitch.switchProfile';
   status.show();
+
+  const profileKind = (profile: ApiProfile): ProfileKind => profile.kind ?? 'privateApi';
+
+  const saveCapturedProfile = async (profile: ApiProfile, captured: CapturedProfileAuth): Promise<void> => {
+    if (captured.kind === 'privateApi') {
+      if (!captured.apiKey) {
+        throw new Error('Captured private API profile has no API key.');
+      }
+      await store.savePrivate({ ...profile, kind: 'privateApi' }, captured.apiKey);
+      return;
+    }
+    if (!captured.authJson) {
+      throw new Error('Captured official account profile has no auth snapshot.');
+    }
+    await store.saveOfficial({ ...profile, kind: 'officialAccount' }, captured.authJson);
+  };
 
   const backupPolicy = (): BackupPolicy => {
     const settings = vscode.workspace.getConfiguration('codexSwitch');
@@ -58,9 +74,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const importCurrent = async (silent = false): Promise<boolean> => {
     try {
-      const current = await configService.readCurrent(await resolvePaths());
-      const profile = uniqueProfile(store, '当前配置', current.baseUrl);
-      await store.save(profile, current.apiKey);
+      const current = await configService.captureCurrentProfile(await resolvePaths());
+      const profile = uniqueProfile(store, '当前配置', current.baseUrl, current.kind);
+      await saveCapturedProfile(profile, current);
       await store.setActive(profile.id);
       await context.globalState.update(INITIAL_IMPORT_KEY, true);
       refreshUi();
@@ -93,17 +109,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.window.showInformationMessage(`“${profile.name}”已是当前 Codex API 配置。`);
       return;
     }
-    const apiKey = await store.getApiKey(profile.id);
-    if (!apiKey) {
-      vscode.window.showErrorMessage(`档案“${profile.name}”缺少安全保存的 API Key。请编辑后再切换。`);
-      return;
-    }
     try {
-      const result = await configService.apply(
-        await resolvePaths(),
-        { baseUrl: profile.baseUrl, apiKey },
-        { profileName: profile.name, policy: backupPolicy() },
-      );
+      const paths = await resolvePaths();
+      const result = profileKind(profile) === 'officialAccount'
+        ? await applyOfficialProfile(paths, profile)
+        : await applyPrivateProfile(paths, profile);
       await store.setActive(profile.id);
       refreshUi();
       if (!result.changed) {
@@ -114,6 +124,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     } catch (error) {
       vscode.window.showErrorMessage(`切换失败：${errorMessage(error)}`);
     }
+  };
+
+  const applyPrivateProfile = async (paths: CodexPaths, profile: ApiProfile) => {
+    const apiKey = await store.getApiKey(profile.id);
+    if (!apiKey) {
+      throw new Error(`档案“${profile.name}”缺少安全保存的 API Key。请编辑后再切换。`);
+    }
+    return configService.apply(
+      paths,
+      { baseUrl: profile.baseUrl, apiKey },
+      { profileName: profile.name, policy: backupPolicy() },
+    );
+  };
+
+  const applyOfficialProfile = async (paths: CodexPaths, profile: ApiProfile) => {
+    const authJson = await store.getOfficialAuth(profile.id);
+    if (!authJson) {
+      throw new Error(`档案“${profile.name}”缺少已保存的官方账号认证快照。请重新导入当前官方账号。`);
+    }
+    return configService.applyOfficial(
+      paths,
+      profile.baseUrl,
+      authJson,
+      { profileName: profile.name, policy: backupPolicy() },
+    );
   };
 
   const addProfile = async (): Promise<void> => {
@@ -129,8 +164,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!apiKey) {
       return;
     }
-    await store.save({ id: randomUUID(), name, baseUrl }, apiKey);
+    await store.savePrivate({ id: randomUUID(), name, baseUrl, kind: 'privateApi' }, apiKey);
     refreshUi();
+  };
+
+  const captureOfficialProfile = async (): Promise<void> => {
+    try {
+      const captured = await configService.captureCurrentProfile(await resolvePaths());
+      if (captured.kind !== 'officialAccount' || !captured.authJson) {
+        vscode.window.showWarningMessage('当前 auth.json 包含 API Key。请先在 Codex 中使用官方账号登录，再导入官方账号档案。');
+        return;
+      }
+      const name = await promptName(store, '官方账号');
+      if (!name) {
+        return;
+      }
+      await saveCapturedProfile(
+        { id: randomUUID(), name, baseUrl: captured.baseUrl, kind: 'officialAccount' },
+        captured,
+      );
+      refreshUi();
+      vscode.window.showInformationMessage(`已保存官方账号档案“${name}”。`);
+    } catch (error) {
+      vscode.window.showErrorMessage(`导入官方账号失败：${errorMessage(error)}`);
+    }
   };
 
   const editProfile = async (candidate?: ApiProfile): Promise<void> => {
@@ -146,16 +203,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!baseUrl) {
       return;
     }
-    const apiKey = await promptApiKey(true);
-    if (apiKey === undefined) {
-      return;
+    if (profileKind(current) === 'officialAccount') {
+      const authJson = await store.getOfficialAuth(current.id);
+      if (!authJson) {
+        vscode.window.showErrorMessage('此官方账号档案缺少认证快照。请重新导入当前官方账号。');
+        return;
+      }
+      await store.saveOfficial({ ...current, name, baseUrl, kind: 'officialAccount' }, authJson);
+    } else {
+      const apiKey = await promptApiKey(true);
+      if (apiKey === undefined) {
+        return;
+      }
+      const existingKey = await store.getApiKey(current.id);
+      if (!apiKey && !existingKey) {
+        vscode.window.showErrorMessage('此档案没有可保留的 API Key，请输入新的 API Key。');
+        return;
+      }
+      await store.savePrivate({ ...current, name, baseUrl, kind: 'privateApi' }, apiKey || existingKey as string);
     }
-    const existingKey = await store.getApiKey(current.id);
-    if (!apiKey && !existingKey) {
-      vscode.window.showErrorMessage('此档案没有可保留的 API Key，请输入新的 API Key。');
-      return;
-    }
-    await store.save({ ...current, name, baseUrl }, apiKey || existingKey as string);
     refreshUi();
   };
 
@@ -168,12 +234,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!name || name === current.name) {
       return;
     }
-    const apiKey = await store.getApiKey(current.id);
-    if (!apiKey) {
-      vscode.window.showErrorMessage(`档案“${current.name}”缺少安全保存的 API Key。请先编辑该档案。`);
-      return;
+    if (profileKind(current) === 'officialAccount') {
+      const authJson = await store.getOfficialAuth(current.id);
+      if (!authJson) {
+        vscode.window.showErrorMessage(`档案“${current.name}”缺少官方账号认证快照。请先重新导入。`);
+        return;
+      }
+      await store.saveOfficial({ ...current, name, kind: 'officialAccount' }, authJson);
+    } else {
+      const apiKey = await store.getApiKey(current.id);
+      if (!apiKey) {
+        vscode.window.showErrorMessage(`档案“${current.name}”缺少安全保存的 API Key。请先编辑该档案。`);
+        return;
+      }
+      await store.savePrivate({ ...current, name, kind: 'privateApi' }, apiKey);
     }
-    await store.save({ ...current, name }, apiKey);
     refreshUi();
   };
 
@@ -271,6 +346,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     status,
     vscode.commands.registerCommand('codexSwitch.switchProfile', switchProfile),
     vscode.commands.registerCommand('codexSwitch.addProfile', addProfile),
+    vscode.commands.registerCommand('codexSwitch.captureOfficialProfile', captureOfficialProfile),
     vscode.commands.registerCommand('codexSwitch.renameProfile', renameProfile),
     vscode.commands.registerCommand('codexSwitch.editProfile', editProfile),
     vscode.commands.registerCommand('codexSwitch.deleteProfile', deleteProfile),
@@ -343,7 +419,7 @@ async function promptApiKey(allowBlank: boolean): Promise<string | undefined> {
   }).then((value) => value === undefined ? undefined : value.trim());
 }
 
-function uniqueProfile(store: ProfileStore, name: string, baseUrl: string): ApiProfile {
+function uniqueProfile(store: ProfileStore, name: string, baseUrl: string, kind: ProfileKind): ApiProfile {
   const names = new Set(store.list().map((profile) => profile.name));
   let candidate = name;
   let index = 2;
@@ -351,7 +427,7 @@ function uniqueProfile(store: ProfileStore, name: string, baseUrl: string): ApiP
     candidate = `${name} ${index}`;
     index += 1;
   }
-  return { id: randomUUID(), name: candidate, baseUrl };
+  return { id: randomUUID(), name: candidate, baseUrl, kind };
 }
 
 function errorMessage(error: unknown): string {

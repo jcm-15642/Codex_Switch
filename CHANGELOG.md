@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.0] - 2026-07-24
+
+- Added separate private API and official-account Profile types.
+- Added secure official-account auth snapshots and the `Import Current Official Account` command.
+- Preserved non-Key auth fields when switching to a private API Profile.
+- Kept local Codex session, log, memory, and state files out of every switch operation.
+
 ## [0.1.4] - 2026-07-24
 
 - Added grouped configuration backups, retention settings, restore, cleanup, and legacy-backup cleanup commands.

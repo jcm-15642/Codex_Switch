@@ -3,7 +3,7 @@ import * as crypto from 'node:crypto';
 import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { ApplyResult, BackupInfo, BackupPolicy, CodexConfiguration, CodexPaths } from './types';
+import { ApplyResult, BackupInfo, BackupPolicy, CapturedProfileAuth, CodexConfiguration, CodexPaths } from './types';
 
 const PROVIDER_SECTION = /^\s*\[\s*model_providers\.OpenAI\s*\]\s*(?:#.*)?\r?$/;
 const SECTION = /^\s*\[/;
@@ -42,6 +42,18 @@ export class CodexConfigService {
     return this.parseConfiguration(authText, tomlText);
   }
 
+  /** Capture the complete current auth document without exposing its contents to callers' logs. */
+  public async captureCurrentProfile(paths: CodexPaths): Promise<CapturedProfileAuth> {
+    const [authJson, tomlText] = await this.readConfigurationFiles(paths);
+    const auth = this.parseAuthDocument(authJson);
+    const apiKey = auth.OPENAI_API_KEY;
+    const baseUrl = this.extractBaseUrl(tomlText);
+    if (typeof apiKey === 'string' && apiKey.trim()) {
+      return { kind: 'privateApi', baseUrl, apiKey };
+    }
+    return { kind: 'officialAccount', baseUrl, authJson };
+  }
+
   public async apply(
     paths: CodexPaths,
     configuration: CodexConfiguration,
@@ -56,8 +68,9 @@ export class CodexConfigService {
     }
 
     const [authText, tomlText] = await this.readConfigurationFiles(paths);
-    const current = this.parseConfiguration(authText, tomlText);
-    if (current.apiKey === configuration.apiKey && current.baseUrl === configuration.baseUrl) {
+    const currentAuth = this.parseAuthDocument(authText);
+    const currentApiKey = typeof currentAuth.OPENAI_API_KEY === 'string' ? currentAuth.OPENAI_API_KEY : undefined;
+    if (currentApiKey === configuration.apiKey && this.extractBaseUrl(tomlText) === configuration.baseUrl) {
       return { changed: false };
     }
 
@@ -65,6 +78,31 @@ export class CodexConfigService {
       paths,
       this.patchAuth(authText, configuration.apiKey),
       this.patchToml(tomlText, configuration.baseUrl),
+      { profileName: options.profileName, reason: 'profile-switch', policy: options.policy },
+    );
+    return { changed: true, backup };
+  }
+
+  /** Restore an official-account auth snapshot while changing only Codex's provider base URL. */
+  public async applyOfficial(
+    paths: CodexPaths,
+    baseUrl: string,
+    authJson: string,
+    options: ApplyOptions = {},
+  ): Promise<ApplyResult> {
+    const urlError = validateBaseUrl(baseUrl);
+    if (urlError) {
+      throw new Error(urlError);
+    }
+    this.parseAuthDocument(authJson);
+    const [currentAuth, currentToml] = await this.readConfigurationFiles(paths);
+    if (currentAuth === authJson && this.extractBaseUrl(currentToml) === baseUrl) {
+      return { changed: false };
+    }
+    const backup = await this.writePair(
+      paths,
+      authJson,
+      this.patchToml(currentToml, baseUrl),
       { profileName: options.profileName, reason: 'profile-switch', policy: options.policy },
     );
     return { changed: true, backup };
@@ -133,7 +171,8 @@ export class CodexConfigService {
       fs.readFile(path.join(backup.directory, 'auth.json'), 'utf8'),
       fs.readFile(path.join(backup.directory, 'config.toml'), 'utf8'),
     ]);
-    this.parseConfiguration(authText, tomlText);
+    this.parseAuthDocument(authText);
+    this.extractBaseUrl(tomlText);
     const [currentAuth, currentToml] = await this.readConfigurationFiles(paths);
     if (currentAuth === authText && currentToml === tomlText) {
       return { changed: false };
@@ -166,17 +205,24 @@ export class CodexConfigService {
   }
 
   private parseConfiguration(authText: string, tomlText: string): CodexConfiguration {
-    let auth: Record<string, unknown>;
-    try {
-      auth = JSON.parse(authText) as Record<string, unknown>;
-    } catch {
-      throw new Error('auth.json is not valid JSON; no changes were made.');
-    }
+    const auth = this.parseAuthDocument(authText);
     const apiKey = auth.OPENAI_API_KEY;
     if (typeof apiKey !== 'string' || !apiKey.trim()) {
       throw new Error('auth.json does not contain a non-empty OPENAI_API_KEY.');
     }
     return { apiKey, baseUrl: this.extractBaseUrl(tomlText) };
+  }
+
+  private parseAuthDocument(authText: string): Record<string, unknown> {
+    try {
+      const auth = JSON.parse(authText) as unknown;
+      if (!auth || typeof auth !== 'object' || Array.isArray(auth)) {
+        throw new Error('not an object');
+      }
+      return auth as Record<string, unknown>;
+    } catch {
+      throw new Error('auth.json is not valid JSON; no changes were made.');
+    }
   }
 
   private extractBaseUrl(tomlText: string): string {
@@ -189,15 +235,7 @@ export class CodexConfigService {
   }
 
   private patchAuth(authText: string, apiKey: string): string {
-    let auth: Record<string, unknown>;
-    try {
-      auth = JSON.parse(authText) as Record<string, unknown>;
-    } catch {
-      throw new Error('auth.json is not valid JSON; no changes were made.');
-    }
-    if (typeof auth.OPENAI_API_KEY !== 'string') {
-      throw new Error('auth.json does not contain OPENAI_API_KEY; no changes were made.');
-    }
+    const auth = this.parseAuthDocument(authText);
     auth.OPENAI_API_KEY = apiKey;
     const indentation = /\n([\t ]+)"/.exec(authText)?.[1] ?? '  ';
     return `${JSON.stringify(auth, null, indentation)}\n`;

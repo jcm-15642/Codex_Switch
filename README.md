@@ -9,6 +9,7 @@
 
 - 在侧栏、状态栏或命令面板中快速切换 API Profile。
 - API Key 使用 VS Code `SecretStorage` 保存；档案元数据不包含 Key。
+- 支持私有 API Profile 与官方账号 Profile；官方账号认证快照同样仅保存在 VS Code `SecretStorage`。
 - 同时支持 Remote-WSL 和本机 Windows VS Code；目标目录从当前 WSL 用户的 `$HOME` 动态推导。
 - 仅修改 `auth.json` 的 `OPENAI_API_KEY` 与 `config.toml` 的 `[model_providers.OpenAI].base_url`。
 - 写入前创建成组快照，可恢复、可删除，并自动保留最近备份。
@@ -26,10 +27,13 @@
 3. 使用 `+` 新建 Profile，或点击已有 Profile 切换。
 4. 切换成功后点击 **Reload Window**，让新的 Codex 终端或会话读取配置。
 
+要创建官方账号 Profile：先在 Codex 中完成官方账号登录，再运行 **Codex Switch: Import Current Official Account**。扩展会安全保存当时完整的 `auth.json` 快照；之后可在私有 API 与该官方账号之间来回切换。
+
 常用命令：
 
 - `Codex Switch: Rename Profile`
 - `Codex Switch: Edit Profile`
+- `Codex Switch: Import Current Official Account`
 - `Codex Switch: Manage Backups`
 - `Codex Switch: Clean Managed Backups`
 - `Codex Switch: Remove Legacy Backup Files`
@@ -49,6 +53,8 @@
 
 `auth.json` 及其备份均可能包含明文 API Key。请不要将 `~/.codex`、备份目录、截图或诊断日志上传到 GitHub、网盘或公开聊天。
 
+切换只读写 `auth.json` 与 `config.toml`；不会删除或重建 `sessions`、日志、记忆或状态数据库。因此私有 API → 私有 API、私有 API → 官方账号、官方账号 → 私有 API 都保留本地对话记录文件。
+
 ## 开发
 
 ```powershell
@@ -65,8 +71,8 @@ npm run package
 
 ```powershell
 git push origin main
-git tag -a v0.1.4 -m "v0.1.4"
-git push origin v0.1.4
+git tag -a v0.2.0 -m "v0.2.0"
+git push origin v0.2.0
 ```
 
 GitHub Actions 会运行测试、打包 VSIX，并自动创建同名 GitHub Release。

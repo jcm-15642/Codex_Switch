@@ -2,7 +2,7 @@
   "name": "codex-switch",
   "displayName": "Codex Switch",
   "description": "Manage and safely switch Codex API URL and API key profiles.",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "publisher": "codex-switch",
   "license": "MIT",
   "repository": {
@@ -64,6 +64,7 @@
     "commands": [
       { "command": "codexSwitch.switchProfile", "title": "Codex Switch: Switch Profile" },
       { "command": "codexSwitch.addProfile", "title": "Codex Switch: Add Profile" },
+      { "command": "codexSwitch.captureOfficialProfile", "title": "Codex Switch: Import Current Official Account" },
       { "command": "codexSwitch.renameProfile", "title": "Codex Switch: Rename Profile", "icon": "$(edit)" },
       { "command": "codexSwitch.editProfile", "title": "Codex Switch: Edit Profile" },
       { "command": "codexSwitch.deleteProfile", "title": "Codex Switch: Delete Profile" },
@@ -77,8 +78,9 @@
     "menus": {
       "view/title": [
         { "command": "codexSwitch.addProfile", "when": "view == codexSwitch.profiles", "group": "navigation@1" },
-        { "command": "codexSwitch.refreshProfiles", "when": "view == codexSwitch.profiles", "group": "navigation@2" },
-        { "command": "codexSwitch.manageBackups", "when": "view == codexSwitch.profiles", "group": "navigation@3" }
+        { "command": "codexSwitch.captureOfficialProfile", "when": "view == codexSwitch.profiles", "group": "navigation@2" },
+        { "command": "codexSwitch.refreshProfiles", "when": "view == codexSwitch.profiles", "group": "navigation@3" },
+        { "command": "codexSwitch.manageBackups", "when": "view == codexSwitch.profiles", "group": "navigation@4" }
       ],
       "view/item/context": [
         { "command": "codexSwitch.switchProfile", "when": "view == codexSwitch.profiles && viewItem == codexProfile", "group": "inline@1" },

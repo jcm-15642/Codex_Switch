@@ -14,9 +14,10 @@ export class ProfileTreeProvider implements vscode.TreeDataProvider<ApiProfile> 
 
   public getTreeItem(profile: ApiProfile): vscode.TreeItem {
     const active = this.store.activeId() === profile.id;
+    const kind = profile.kind ?? 'privateApi';
     const item = new vscode.TreeItem(profile.name, vscode.TreeItemCollapsibleState.None);
-    item.description = `${active ? '当前 · ' : ''}${profile.baseUrl}`;
-    item.tooltip = `${profile.name}\n${profile.baseUrl}${active ? '\n当前已应用' : ''}`;
+    item.description = `${active ? '当前 · ' : ''}${kind === 'officialAccount' ? '官方账号 · ' : 'API · '}${profile.baseUrl}`;
+    item.tooltip = `${profile.name}\n${kind === 'officialAccount' ? '官方账号认证' : '私有 API 认证'}\n${profile.baseUrl}${active ? '\n当前已应用' : ''}`;
     item.contextValue = 'codexProfile';
     item.iconPath = new vscode.ThemeIcon(active ? 'check' : 'server');
     item.command = {

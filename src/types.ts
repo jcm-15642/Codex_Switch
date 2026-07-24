@@ -1,7 +1,18 @@
+export type ProfileKind = 'privateApi' | 'officialAccount';
+
 export interface ApiProfile {
   id: string;
   name: string;
   baseUrl: string;
+  /** Missing on profiles created before v0.2.0; treat those as private API profiles. */
+  kind?: ProfileKind;
+}
+
+export interface CapturedProfileAuth {
+  kind: ProfileKind;
+  baseUrl: string;
+  apiKey?: string;
+  authJson?: string;
 }
 
 export interface CodexConfiguration {
